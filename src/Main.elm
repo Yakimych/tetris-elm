@@ -3,6 +3,8 @@ module Main exposing (..)
 import Browser
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
+import Time
+import Types exposing (BoardMap, Orientation, PieceShape)
 
 
 
@@ -17,13 +19,33 @@ main =
 -- MODEL
 
 
-type alias Model =
-    Int
+type alias PieceState =
+    { shape : PieceShape
+    , orientation : Orientation
+    , x : Int
+    , y : Int
+    }
+
+
+type alias GameState =
+    { board : BoardMap
+    , currentPiece : PieceState
+    , nextShape : PieceShape
+    , millisecondsSinceLastTick : Int
+    , linesCleared : Int
+    }
+
+
+type Model
+    = NotStarted
+    | Running GameState
+    | Paused GameState
+    | GameOver GameState
 
 
 init : Model
 init =
-    0
+    NotStarted
 
 
 
@@ -31,18 +53,22 @@ init =
 
 
 type Msg
-    = Increment
-    | Decrement
+    = Tick Time.Posix
+    | UpPressed
+    | MovePieceDown
+    | DownPressed
+    | RightPressed
+    | LeftPressed
+    | SpawnNextPiece PieceShape
+    | PausePressed
+    | ResumePressed
+    | StartNewGamePressed
+    | StartNewGame ( PieceShape, PieceShape )
 
 
 update : Msg -> Model -> Model
 update msg model =
-    case msg of
-        Increment ->
-            model + 1
-
-        Decrement ->
-            model - 1
+    model
 
 
 
@@ -52,7 +78,7 @@ update msg model =
 view : Model -> Html Msg
 view model =
     div []
-        [ button [ onClick Decrement ] [ text "-" ]
-        , div [] [ text (String.fromInt model) ]
-        , button [ onClick Increment ] [ text "+" ]
+        [ button [ onClick StartNewGamePressed ] [ text "Start New Game" ]
+        , div [] [ text (String.fromInt 123) ]
+        , button [ onClick PausePressed ] [ text "Pause" ]
         ]
