@@ -4,8 +4,13 @@ import Dict exposing (Dict)
 import Set exposing (Set)
 
 
+type BoardTile
+    = OccupiedBy PieceShape
+    | Boundary
+
+
 type alias BoardMap =
-    Dict ( Int, Int ) PieceShape
+    Dict ( Int, Int ) BoardTile
 
 
 type alias PieceSet =
@@ -27,11 +32,6 @@ type Orientation
     | Left
     | Down
     | Right
-
-
-type BoardTile
-    = OccupiedBy PieceShape
-    | Boundary
 
 
 

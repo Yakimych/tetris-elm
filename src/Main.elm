@@ -1,7 +1,7 @@
-module Main exposing (..)
+module Main exposing (main)
 
 import Browser
-import Dict
+import Dict exposing (insert)
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
 import Time
@@ -12,6 +12,7 @@ import Types exposing (BoardMap, Orientation, PieceShape)
 -- MAIN
 
 
+main : Program () Model Msg
 main =
     Browser.sandbox { init = init, update = update, view = view }
 
@@ -48,7 +49,12 @@ initGameState () =
         startingPieceShape =
             Types.L
     in
-    { board = Dict.empty, currentPiece = initPiece startingPieceShape, nextShape = Types.T, millisecondsSinceLastTick = 0, linesCleared = 0 }
+    { board = Dict.empty |> addBoundaries
+    , currentPiece = initPiece startingPieceShape
+    , nextShape = Types.T
+    , millisecondsSinceLastTick = 0
+    , linesCleared = 0
+    }
 
 
 type Model
@@ -61,6 +67,54 @@ type Model
 init : Model
 init =
     NotStarted
+
+
+pieceSizeOnBoard : Int
+pieceSizeOnBoard =
+    20
+
+
+tickResolutionInMs : Int
+tickResolutionInMs =
+    10
+
+
+boardWidth : Int
+boardWidth =
+    10
+
+
+boardHeight : Int
+boardHeight =
+    20
+
+
+pieceSize : Int
+pieceSize =
+    4
+
+
+addSideBoundaries : BoardMap -> BoardMap
+addSideBoundaries board =
+    List.range -1 boardHeight
+        |> List.foldl
+            (\y tempBoard ->
+                tempBoard
+                    |> Dict.insert ( -1, y ) Types.Boundary
+                    |> Dict.insert ( boardWidth, y ) Types.Boundary
+            )
+            board
+
+
+addBottomBoundary : BoardMap -> BoardMap
+addBottomBoundary board =
+    List.range -1 boardWidth
+        |> List.foldl (\x tempBoard -> tempBoard |> Dict.insert ( x, boardHeight ) Types.Boundary) board
+
+
+addBoundaries : BoardMap -> BoardMap
+addBoundaries =
+    addSideBoundaries >> addBottomBoundary
 
 
 
