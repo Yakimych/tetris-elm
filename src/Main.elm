@@ -2,8 +2,10 @@ module Main exposing (main)
 
 import Browser
 import Dict exposing (insert)
-import Html exposing (Html, button, div, text)
+import Html exposing (Html, button, div, h6, text)
 import Html.Events exposing (onClick)
+import Svg exposing (rect, svg)
+import Svg.Attributes exposing (height, rx, ry, viewBox, width, x, y)
 import Time
 import Types exposing (BoardMap, Orientation, PieceShape)
 
@@ -137,12 +139,15 @@ type Msg
 
 update : Msg -> Model -> Model
 update msg model =
-    case ( msg, model ) of
-        ( StartNewGamePressed, _ ) ->
+    case ( model, msg ) of
+        ( _, StartNewGamePressed ) ->
             Running (initGameState ())
 
-        ( PausePressed, Running gameState ) ->
+        ( Running gameState, PausePressed ) ->
             Paused gameState
+
+        ( Paused gameState, ResumePressed ) ->
+            Running gameState
 
         _ ->
             model
@@ -175,4 +180,21 @@ view model =
         , div [] [ text (String.fromInt 123) ]
         , div [] [ text <| getStatus model ]
         , button [ onClick PausePressed ] [ text "Pause" ]
+        , button [ onClick ResumePressed ] [ text "Resume" ]
+        , h6 [] [ text <| getStatus model ]
+        , svg
+            [ width "120"
+            , height "120"
+            , viewBox "0 0 120 120"
+            ]
+            [ rect
+                [ x "10"
+                , y "10"
+                , width "100"
+                , height "100"
+                , rx "15"
+                , ry "15"
+                ]
+                []
+            ]
         ]
