@@ -1,6 +1,7 @@
 module Main exposing (..)
 
 import Browser
+import Dict
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
 import Time
@@ -36,6 +37,20 @@ type alias GameState =
     }
 
 
+initPiece : PieceShape -> PieceState
+initPiece pieceShape =
+    { shape = pieceShape, orientation = Types.Up, x = 3, y = -1 }
+
+
+initGameState : () -> GameState
+initGameState () =
+    let
+        startingPieceShape =
+            Types.L
+    in
+    { board = Dict.empty, currentPiece = initPiece startingPieceShape, nextShape = Types.T, millisecondsSinceLastTick = 0, linesCleared = 0 }
+
+
 type Model
     = NotStarted
     | Running GameState
@@ -68,11 +83,35 @@ type Msg
 
 update : Msg -> Model -> Model
 update msg model =
-    model
+    case ( msg, model ) of
+        ( StartNewGamePressed, _ ) ->
+            Running (initGameState ())
+
+        ( PausePressed, Running gameState ) ->
+            Paused gameState
+
+        _ ->
+            model
 
 
 
 -- VIEW
+
+
+getStatus : Model -> String
+getStatus model =
+    case model of
+        NotStarted ->
+            "Not Started"
+
+        Running _ ->
+            "Running"
+
+        Paused _ ->
+            "Paused"
+
+        GameOver _ ->
+            "Game Over"
 
 
 view : Model -> Html Msg
@@ -80,5 +119,6 @@ view model =
     div []
         [ button [ onClick StartNewGamePressed ] [ text "Start New Game" ]
         , div [] [ text (String.fromInt 123) ]
+        , div [] [ text <| getStatus model ]
         , button [ onClick PausePressed ] [ text "Pause" ]
         ]
