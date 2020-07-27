@@ -44,7 +44,7 @@ type alias GameState =
 
 initPiece : PieceShape -> PieceState
 initPiece pieceShape =
-    { shape = pieceShape, orientation = Up, x = 3, y = -1 }
+    { shape = pieceShape, orientation = Up, x = 3, y = -2 }
 
 
 initGameState : () -> GameState
@@ -185,8 +185,8 @@ canvasHeight =
     pieceSizeOnBoard * boardHeight |> String.fromInt
 
 
-nextPieceCanvasHeight : String
-nextPieceCanvasHeight =
+nextPieceCanvasSize : String
+nextPieceCanvasSize =
     pieceSizeOnBoard * pieceSize |> String.fromInt
 
 
@@ -264,6 +264,27 @@ drawPieceState pieceState =
     drawPiece pieceState.x pieceState.y pieceState.shape pieceState.orientation
 
 
+drawNextPieceState : PieceShape -> List (Svg.Svg Msg)
+drawNextPieceState pieceShape =
+    let
+        nextPieceCanvasRect =
+            rect
+                [ width nextPieceCanvasSize
+                , height nextPieceCanvasSize
+                , x "0"
+                , y "0"
+                , fill boardBackgroundColor
+                , stroke boardBorderColor
+                , strokeWidth "1"
+                ]
+                []
+
+        pieceTiles =
+            drawPiece 0 0 pieceShape Up
+    in
+    nextPieceCanvasRect :: pieceTiles
+
+
 drawBoard : BoardMap -> List (Svg.Svg Msg)
 drawBoard board =
     board
@@ -288,10 +309,23 @@ view model =
 
                 Running gameState ->
                     drawBoard gameState.board ++ drawPieceState gameState.currentPiece
+
+        tilesOnNextPieceCanvas =
+            case model of
+                NotStarted ->
+                    []
+
+                Paused gameState ->
+                    drawNextPieceState gameState.nextShape
+
+                GameOver gameState ->
+                    drawNextPieceState gameState.nextShape
+
+                Running gameState ->
+                    drawNextPieceState gameState.nextShape
     in
     div []
         [ button [ onClick StartNewGamePressed ] [ text "Start New Game" ]
-        , div [] [ text (String.fromInt 123) ]
         , div [] [ text <| getStatus model ]
         , button [ onClick PausePressed ] [ text "Pause" ]
         , button [ onClick ResumePressed ] [ text "Resume" ]
@@ -299,7 +333,13 @@ view model =
         , svg
             [ width canvasWidth
             , height canvasHeight
-            , viewBox ("0 0 " ++ canvasWidth ++ " " ++ canvasHeight)
+            , viewBox (String.concat [ "0 0 ", canvasWidth, " ", canvasHeight ])
             ]
             (drawBackground () ++ tilesOnMainCanvas)
+        , svg
+            [ width nextPieceCanvasSize
+            , height nextPieceCanvasSize
+            , viewBox (String.concat [ "0 0 ", nextPieceCanvasSize, " ", nextPieceCanvasSize ])
+            ]
+            tilesOnNextPieceCanvas
         ]
