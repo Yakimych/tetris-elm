@@ -179,16 +179,17 @@ removeLine board line =
 
 clearLines : GameState -> GameState
 clearLines gameState =
-    case gameState.board |> tryFindBottomMostFullLine of
-        Just lineToRemove ->
-            let
-                newBoard =
-                    removeLine gameState.board lineToRemove
-            in
-            clearLines { gameState | board = newBoard, linesCleared = gameState.linesCleared + 1 }
-
-        Nothing ->
-            gameState
+    gameState.board
+        |> tryFindBottomMostFullLine
+        |> Maybe.map
+            (\lineToRemove ->
+                clearLines
+                    { gameState
+                        | board = removeLine gameState.board lineToRemove
+                        , linesCleared = gameState.linesCleared + 1
+                    }
+            )
+        |> Maybe.withDefault gameState
 
 
 movedLeft : PieceState -> PieceState
