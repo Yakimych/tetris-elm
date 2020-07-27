@@ -4,10 +4,12 @@ import Browser
 import Dict exposing (insert)
 import Html exposing (Html, button, div, h6, text)
 import Html.Events exposing (onClick)
-import Svg exposing (rect, svg)
-import Svg.Attributes exposing (height, rx, ry, viewBox, width, x, y)
+import Set
+import Styling exposing (boardBackgroundColor, boardBorderColor, getPieceColor, getTileColor, lineColor)
+import Svg exposing (line, rect, svg)
+import Svg.Attributes exposing (fill, height, stroke, strokeWidth, viewBox, width, x, x1, x2, y, y1, y2)
 import Time
-import Types exposing (BoardMap, Orientation, PieceShape)
+import Types exposing (BoardMap, BoardTile(..), Orientation(..), PieceShape(..), getPieceSet)
 
 
 
@@ -42,18 +44,18 @@ type alias GameState =
 
 initPiece : PieceShape -> PieceState
 initPiece pieceShape =
-    { shape = pieceShape, orientation = Types.Up, x = 3, y = -1 }
+    { shape = pieceShape, orientation = Up, x = 3, y = -1 }
 
 
 initGameState : () -> GameState
 initGameState () =
     let
         startingPieceShape =
-            Types.L
+            L
     in
     { board = Dict.empty |> addBoundaries
     , currentPiece = initPiece startingPieceShape
-    , nextShape = Types.T
+    , nextShape = T
     , millisecondsSinceLastTick = 0
     , linesCleared = 0
     }
@@ -102,8 +104,8 @@ addSideBoundaries board =
         |> List.foldl
             (\y tempBoard ->
                 tempBoard
-                    |> Dict.insert ( -1, y ) Types.Boundary
-                    |> Dict.insert ( boardWidth, y ) Types.Boundary
+                    |> Dict.insert ( -1, y ) Boundary
+                    |> Dict.insert ( boardWidth, y ) Boundary
             )
             board
 
@@ -111,7 +113,7 @@ addSideBoundaries board =
 addBottomBoundary : BoardMap -> BoardMap
 addBottomBoundary board =
     List.range -1 boardWidth
-        |> List.foldl (\x tempBoard -> tempBoard |> Dict.insert ( x, boardHeight ) Types.Boundary) board
+        |> List.foldl (\x tempBoard -> tempBoard |> Dict.insert ( x, boardHeight ) Boundary) board
 
 
 addBoundaries : BoardMap -> BoardMap
@@ -173,8 +175,120 @@ getStatus model =
             "Game Over"
 
 
+canvasWidth : String
+canvasWidth =
+    pieceSizeOnBoard * boardWidth |> String.fromInt
+
+
+canvasHeight : String
+canvasHeight =
+    pieceSizeOnBoard * boardHeight |> String.fromInt
+
+
+nextPieceCanvasHeight : String
+nextPieceCanvasHeight =
+    pieceSizeOnBoard * pieceSize |> String.fromInt
+
+
+drawBackground : () -> List (Svg.Svg Msg)
+drawBackground () =
+    let
+        boardRect =
+            rect
+                [ width canvasWidth
+                , height canvasHeight
+                , x "0"
+                , y "0"
+                , fill boardBackgroundColor
+                , stroke boardBorderColor
+                , strokeWidth "1"
+                ]
+                []
+
+        verticalLines =
+            List.range 1 (boardWidth - 1)
+                |> List.map
+                    (\col ->
+                        line
+                            [ col * pieceSizeOnBoard |> String.fromInt |> x1
+                            , y1 "0"
+                            , col * pieceSizeOnBoard |> String.fromInt |> x2
+                            , y2 canvasHeight
+                            , stroke lineColor
+                            , strokeWidth "1"
+                            ]
+                            []
+                    )
+
+        horizontalLines =
+            List.range 1 (boardHeight - 1)
+                |> List.map
+                    (\row ->
+                        line
+                            [ x1 "0"
+                            , row * pieceSizeOnBoard |> String.fromInt |> y1
+                            , x2 canvasWidth
+                            , row * pieceSizeOnBoard |> String.fromInt |> y2
+                            , stroke lineColor
+                            , strokeWidth "1"
+                            ]
+                            []
+                    )
+    in
+    boardRect :: verticalLines ++ horizontalLines
+
+
+drawCell : Int -> Int -> String -> Svg.Svg Msg
+drawCell atX atY color =
+    rect
+        [ width (pieceSizeOnBoard |> String.fromInt)
+        , height (pieceSizeOnBoard |> String.fromInt)
+        , x (atX * pieceSizeOnBoard |> String.fromInt)
+        , y (atY * pieceSizeOnBoard |> String.fromInt)
+        , fill color
+        , stroke "Black"
+        , strokeWidth "1"
+        ]
+        []
+
+
+drawPiece : Int -> Int -> PieceShape -> Orientation -> List (Svg.Svg Msg)
+drawPiece atX atY pieceShape pieceOrientation =
+    getPieceSet pieceShape pieceOrientation
+        |> Set.toList
+        |> List.map (\( x, y ) -> drawCell (atX + x) (atY + y) (getPieceColor pieceShape))
+
+
+drawPieceState : PieceState -> List (Svg.Svg Msg)
+drawPieceState pieceState =
+    drawPiece pieceState.x pieceState.y pieceState.shape pieceState.orientation
+
+
+drawBoard : BoardMap -> List (Svg.Svg Msg)
+drawBoard board =
+    board
+        |> Dict.map (\( x, y ) boardTile -> drawCell x y (getTileColor boardTile))
+        |> Dict.toList
+        |> List.map (\( _, rect ) -> rect)
+
+
 view : Model -> Html Msg
 view model =
+    let
+        tilesOnMainCanvas =
+            case model of
+                NotStarted ->
+                    []
+
+                Paused gameState ->
+                    drawBoard gameState.board ++ drawPieceState gameState.currentPiece
+
+                GameOver gameState ->
+                    drawBoard gameState.board ++ drawPieceState gameState.currentPiece
+
+                Running gameState ->
+                    drawBoard gameState.board ++ drawPieceState gameState.currentPiece
+    in
     div []
         [ button [ onClick StartNewGamePressed ] [ text "Start New Game" ]
         , div [] [ text (String.fromInt 123) ]
@@ -183,18 +297,9 @@ view model =
         , button [ onClick ResumePressed ] [ text "Resume" ]
         , h6 [] [ text <| getStatus model ]
         , svg
-            [ width "120"
-            , height "120"
-            , viewBox "0 0 120 120"
+            [ width canvasWidth
+            , height canvasHeight
+            , viewBox ("0 0 " ++ canvasWidth ++ " " ++ canvasHeight)
             ]
-            [ rect
-                [ x "10"
-                , y "10"
-                , width "100"
-                , height "100"
-                , rx "15"
-                , ry "15"
-                ]
-                []
-            ]
+            (drawBackground () ++ tilesOnMainCanvas)
         ]
