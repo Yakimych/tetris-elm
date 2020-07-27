@@ -4,12 +4,13 @@ import Browser
 import Dict exposing (insert)
 import Html exposing (Html, button, div, h6, text)
 import Html.Events exposing (onClick)
+import List.Extra
 import Set
 import Styling exposing (boardBackgroundColor, boardBorderColor, getPieceColor, getTileColor, lineColor)
 import Svg exposing (line, rect, svg)
 import Svg.Attributes exposing (fill, height, stroke, strokeWidth, viewBox, width, x, x1, x2, y, y1, y2)
 import Time
-import Types exposing (BoardMap, BoardTile(..), Orientation(..), PieceShape(..), getPieceSet)
+import Types exposing (BoardMap, BoardTile(..), Orientation(..), PieceShape(..), getNextOrientation, getPieceSet)
 
 
 
@@ -18,7 +19,12 @@ import Types exposing (BoardMap, BoardTile(..), Orientation(..), PieceShape(..),
 
 main : Program () Model Msg
 main =
-    Browser.sandbox { init = init, update = update, view = view }
+    Browser.element { init = init, update = update, subscriptions = subscriptions, view = view }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.none
 
 
 
@@ -61,6 +67,125 @@ initGameState () =
     }
 
 
+landPiece : GameState -> GameState
+landPiece gameState =
+    let
+        newBoard =
+            getPieceSet gameState.currentPiece.shape gameState.currentPiece.orientation
+                |> Set.foldl
+                    (\( x, y ) tempBoard ->
+                        tempBoard |> Dict.insert ( x + gameState.currentPiece.x, y + gameState.currentPiece.y ) (OccupiedBy gameState.currentPiece.shape)
+                    )
+                    gameState.board
+    in
+    { gameState | board = newBoard }
+
+
+hasCollisionWith : BoardMap -> PieceState -> Bool
+hasCollisionWith board piece =
+    let
+        pieceSet =
+            getPieceSet piece.shape piece.orientation
+                |> Set.map (\( x, y ) -> ( x + piece.x, y + piece.y ))
+
+        boardSet =
+            board |> Dict.keys |> Set.fromList
+    in
+    boardSet |> Set.intersect pieceSet |> Set.isEmpty |> not
+
+
+isOccupiedByPiece : BoardTile -> Bool
+isOccupiedByPiece boardTile =
+    case boardTile of
+        OccupiedBy _ ->
+            True
+
+        Boundary ->
+            False
+
+
+isBoundary : BoardTile -> Bool
+isBoundary boardTile =
+    case boardTile of
+        OccupiedBy _ ->
+            False
+
+        Boundary ->
+            True
+
+
+isFull : BoardMap -> Int -> Bool
+isFull board line =
+    let
+        tilesOnLine =
+            board |> Dict.filter (\( _, y ) boardTile -> isOccupiedByPiece boardTile && y == line) |> Dict.size
+    in
+    tilesOnLine == boardWidth
+
+
+tryFindBottomMostFullLine : BoardMap -> Maybe Int
+tryFindBottomMostFullLine board =
+    List.range (boardHeight - 1) 0
+        |> List.reverse
+        |> List.Extra.findIndex (\line -> line |> isFull board)
+
+
+shiftLinesAbove : Int -> ( ( Int, Int ), BoardTile ) -> ( ( Int, Int ), BoardTile )
+shiftLinesAbove fromLine ( ( x, y ), boardTile ) =
+    if y < fromLine && isOccupiedByPiece boardTile then
+        ( ( x, y + 1 ), boardTile )
+
+    else
+        ( ( x, y ), boardTile )
+
+
+removeLine : BoardMap -> Int -> BoardMap
+removeLine board line =
+    board
+        |> Dict.filter (\( _, y ) boardTile -> y /= line || isBoundary boardTile)
+        |> Dict.toList
+        |> List.map (shiftLinesAbove line)
+        |> Dict.fromList
+
+
+clearLines : GameState -> GameState
+clearLines gameState =
+    case gameState.board |> tryFindBottomMostFullLine of
+        Just lineToRemove ->
+            let
+                newBoard =
+                    removeLine gameState.board lineToRemove
+            in
+            clearLines { gameState | board = newBoard, linesCleared = gameState.linesCleared + 1 }
+
+        Nothing ->
+            gameState
+
+
+movedLeft : PieceState -> PieceState
+movedLeft pieceState =
+    { pieceState | x = pieceState.x - 1 }
+
+
+movedRight : PieceState -> PieceState
+movedRight pieceState =
+    { pieceState | x = pieceState.x + 1 }
+
+
+getRotatedPiece : PieceState -> PieceState
+getRotatedPiece pieceState =
+    { pieceState | orientation = pieceState.orientation |> getNextOrientation }
+
+
+setPieceIfNoCollision : GameState -> PieceState -> ( Model, Cmd Msg )
+setPieceIfNoCollision gameState newPiece =
+    if newPiece |> hasCollisionWith gameState.board then
+        ( Running gameState, Cmd.none )
+
+    else
+        ( Running { gameState | currentPiece = newPiece }, Cmd.none )
+
+
 type Model
     = NotStarted
     | Running GameState
@@ -68,9 +193,9 @@ type Model
     | GameOver GameState
 
 
-init : Model
-init =
-    NotStarted
+init : () -> ( Model, Cmd Msg )
+init _ =
+    ( NotStarted, Cmd.none )
 
 
 pieceSizeOnBoard : Int
@@ -129,7 +254,7 @@ type Msg
     = Tick Time.Posix
     | UpPressed
     | MovePieceDown
-    | DownPressed
+      -- | DownPressed
     | RightPressed
     | LeftPressed
     | SpawnNextPiece PieceShape
@@ -139,20 +264,70 @@ type Msg
     | StartNewGame ( PieceShape, PieceShape )
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case ( model, msg ) of
-        ( _, StartNewGamePressed ) ->
-            Running (initGameState ())
+        ( Running gameState, Tick _ ) ->
+            let
+                newMillisecondsSinceLastTick =
+                    gameState.millisecondsSinceLastTick + tickResolutionInMs
+            in
+            if newMillisecondsSinceLastTick > 1000 then
+                ( Running { gameState | millisecondsSinceLastTick = 0 }, Cmd.none )
+                -- TODO: MovePieceDown Cmd
+
+            else
+                ( Running { gameState | millisecondsSinceLastTick = newMillisecondsSinceLastTick }, Cmd.none )
+
+        ( Running gameState, MovePieceDown ) ->
+            let
+                currentPiece =
+                    gameState.currentPiece
+
+                newPiece =
+                    { currentPiece | y = gameState.currentPiece.y + 1 }
+            in
+            if newPiece |> hasCollisionWith gameState.board then
+                ( Running (gameState |> landPiece |> clearLines), Cmd.none )
+                -- TODO: SpawnRandomPiece Cmd
+
+            else
+                ( Running { gameState | currentPiece = newPiece }, Cmd.none )
+
+        ( Running gameState, UpPressed ) ->
+            setPieceIfNoCollision gameState (gameState.currentPiece |> getRotatedPiece)
+
+        ( Running gameState, LeftPressed ) ->
+            setPieceIfNoCollision gameState (gameState.currentPiece |> movedLeft)
+
+        ( Running gameState, RightPressed ) ->
+            setPieceIfNoCollision gameState (gameState.currentPiece |> movedRight)
+
+        ( Running gameState, SpawnNextPiece nextPieceShape ) ->
+            let
+                newPiece =
+                    initPiece gameState.nextShape
+            in
+            if newPiece |> hasCollisionWith gameState.board then
+                ( GameOver gameState, Cmd.none )
+
+            else
+                ( Running { gameState | currentPiece = newPiece, nextShape = nextPieceShape }, Cmd.none )
 
         ( Running gameState, PausePressed ) ->
-            Paused gameState
+            ( Paused gameState, Cmd.none )
 
         ( Paused gameState, ResumePressed ) ->
-            Running gameState
+            ( Running gameState, Cmd.none )
 
+        ( _, StartNewGamePressed ) ->
+            ( Running (initGameState ()), Cmd.none )
+
+        -- TODO: startNewGameCmd
+        -- ( _, StartNewGame (startingPieceShape, nextPieceShape) ) ->
+        --     ( Running (initGameState startingPieceShape nextPieceShape), Cmd.none )
         _ ->
-            model
+            ( model, Cmd.none )
 
 
 
