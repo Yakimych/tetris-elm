@@ -1,15 +1,16 @@
 module Main exposing (main)
 
 import Browser
+import Browser.Events
 import Dict exposing (insert)
 import Html exposing (Html, button, div, h6, text)
 import Html.Events exposing (onClick)
+import Json.Decode as Decode
 import List.Extra
 import Set
 import Styling exposing (boardBackgroundColor, boardBorderColor, getPieceColor, getTileColor, lineColor)
 import Svg exposing (line, rect, svg)
 import Svg.Attributes exposing (fill, height, stroke, strokeWidth, viewBox, width, x, x1, x2, y, y1, y2)
-import Time
 import Types exposing (BoardMap, BoardTile(..), Orientation(..), PieceShape(..), getNextOrientation, getPieceSet)
 
 
@@ -22,9 +23,40 @@ main =
     Browser.element { init = init, update = update, subscriptions = subscriptions, view = view }
 
 
+keyDecoder : Decode.Decoder Msg
+keyDecoder =
+    Decode.map toMsg (Decode.field "key" Decode.string)
+
+
+toMsg : String -> Msg
+toMsg string =
+    case string of
+        "ArrowLeft" ->
+            LeftPressed
+
+        "ArrowRight" ->
+            RightPressed
+
+        "ArrowDown" ->
+            MovePieceDown
+
+        "ArrowUp" ->
+            UpPressed
+
+        _ ->
+            NoOp
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.none
+    let
+        keySubscription =
+            Browser.Events.onKeyDown keyDecoder
+
+        timerSubscription =
+            Browser.Events.onAnimationFrameDelta (\deltaSinceLastTick -> Tick deltaSinceLastTick)
+    in
+    Sub.batch [ keySubscription, timerSubscription ]
 
 
 
@@ -43,7 +75,7 @@ type alias GameState =
     { board : BoardMap
     , currentPiece : PieceState
     , nextShape : PieceShape
-    , millisecondsSinceLastTick : Int
+    , millisecondsSinceLastTick : Float
     , linesCleared : Int
     }
 
@@ -203,11 +235,6 @@ pieceSizeOnBoard =
     20
 
 
-tickResolutionInMs : Int
-tickResolutionInMs =
-    10
-
-
 boardWidth : Int
 boardWidth =
     10
@@ -251,7 +278,8 @@ addBoundaries =
 
 
 type Msg
-    = Tick Time.Posix
+    = Tick Float
+    | NoOp
     | UpPressed
     | MovePieceDown
       -- | DownPressed
@@ -264,35 +292,39 @@ type Msg
     | StartNewGame ( PieceShape, PieceShape )
 
 
+movePieceDown : GameState -> ( Model, Cmd Msg )
+movePieceDown gameState =
+    let
+        currentPiece =
+            gameState.currentPiece
+
+        newPiece =
+            { currentPiece | y = gameState.currentPiece.y + 1 }
+    in
+    if newPiece |> hasCollisionWith gameState.board then
+        ( Running (gameState |> landPiece |> clearLines), Cmd.none )
+        -- TODO: SpawnRandomPiece Cmd
+
+    else
+        ( Running { gameState | currentPiece = newPiece }, Cmd.none )
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case ( model, msg ) of
-        ( Running gameState, Tick _ ) ->
+        ( Running gameState, Tick deltaSinceLastTick ) ->
             let
                 newMillisecondsSinceLastTick =
-                    gameState.millisecondsSinceLastTick + tickResolutionInMs
+                    gameState.millisecondsSinceLastTick + deltaSinceLastTick
             in
             if newMillisecondsSinceLastTick > 1000 then
-                ( Running { gameState | millisecondsSinceLastTick = 0 }, Cmd.none )
-                -- TODO: MovePieceDown Cmd
+                movePieceDown { gameState | millisecondsSinceLastTick = 0 }
 
             else
                 ( Running { gameState | millisecondsSinceLastTick = newMillisecondsSinceLastTick }, Cmd.none )
 
         ( Running gameState, MovePieceDown ) ->
-            let
-                currentPiece =
-                    gameState.currentPiece
-
-                newPiece =
-                    { currentPiece | y = gameState.currentPiece.y + 1 }
-            in
-            if newPiece |> hasCollisionWith gameState.board then
-                ( Running (gameState |> landPiece |> clearLines), Cmd.none )
-                -- TODO: SpawnRandomPiece Cmd
-
-            else
-                ( Running { gameState | currentPiece = newPiece }, Cmd.none )
+            movePieceDown gameState
 
         ( Running gameState, UpPressed ) ->
             setPieceIfNoCollision gameState (gameState.currentPiece |> getRotatedPiece)
