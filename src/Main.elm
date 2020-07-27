@@ -1,5 +1,6 @@
 module Main exposing (main)
 
+import Array exposing (Array)
 import Browser
 import Browser.Events
 import Dict exposing (insert)
@@ -76,7 +77,7 @@ type alias GameState =
     { board : BoardMap
     , currentPiece : PieceState
     , nextShape : PieceShape
-    , millisecondsSinceLastTick : Float
+    , millisecondsSinceLastTick : Int
     , linesCleared : Int
     }
 
@@ -248,6 +249,28 @@ pieceSize =
     4
 
 
+lastLevelInterval : Int
+lastLevelInterval =
+    50
+
+
+timerIntervalsPerLevel : Array Int
+timerIntervalsPerLevel =
+    [ 500, 400, 300, 200, 100, 75, lastLevelInterval ] |> Array.fromList
+
+
+getCurrentLevel : GameState -> Int
+getCurrentLevel gameState =
+    gameState.linesCleared // 10
+
+
+getCurrentTimerInterval : GameState -> Int
+getCurrentTimerInterval gameState =
+    timerIntervalsPerLevel
+        |> Array.get (getCurrentLevel gameState)
+        |> Maybe.withDefault lastLevelInterval
+
+
 addSideBoundaries : BoardMap -> BoardMap
 addSideBoundaries board =
     List.range -1 boardHeight
@@ -316,10 +339,13 @@ update msg model =
         ( Running gameState, Tick deltaSinceLastTick ) ->
             let
                 newMillisecondsSinceLastTick =
-                    gameState.millisecondsSinceLastTick + deltaSinceLastTick
+                    gameState.millisecondsSinceLastTick + (deltaSinceLastTick |> ceiling)
+
+                timerIntervalForCurrentLevel =
+                    getCurrentTimerInterval gameState
             in
-            if newMillisecondsSinceLastTick > 1000 then
-                movePieceDown { gameState | millisecondsSinceLastTick = 0 }
+            if newMillisecondsSinceLastTick >= timerIntervalForCurrentLevel then
+                movePieceDown { gameState | millisecondsSinceLastTick = newMillisecondsSinceLastTick - timerIntervalForCurrentLevel }
 
             else
                 ( Running { gameState | millisecondsSinceLastTick = newMillisecondsSinceLastTick }, Cmd.none )
@@ -367,20 +393,28 @@ update msg model =
 -- VIEW
 
 
+getMetricsText : GameState -> String
+getMetricsText gameState =
+    "Current level: "
+        ++ ((getCurrentLevel gameState + 1) |> String.fromInt)
+        ++ ". Lines cleared: "
+        ++ (gameState.linesCleared |> String.fromInt)
+
+
 getStatus : Model -> String
 getStatus model =
     case model of
         NotStarted ->
             "Not Started"
 
-        Running _ ->
-            "Running"
+        Running gameState ->
+            "Running. " ++ (gameState |> getMetricsText)
 
-        Paused _ ->
-            "Paused"
+        Paused gameState ->
+            "Paused: " ++ (gameState |> getMetricsText)
 
-        GameOver _ ->
-            "Game Over"
+        GameOver gameState ->
+            "Game Over! " ++ (gameState |> getMetricsText)
 
 
 canvasWidth : String
