@@ -7,6 +7,7 @@ import Html exposing (Html, button, div, h6, text)
 import Html.Events exposing (onClick)
 import Json.Decode as Decode
 import List.Extra
+import Random
 import Set
 import Styling exposing (boardBackgroundColor, boardBorderColor, getPieceColor, getTileColor, lineColor)
 import Svg exposing (line, rect, svg)
@@ -48,7 +49,7 @@ toMsg string =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     let
         keySubscription =
             Browser.Events.onKeyDown keyDecoder
@@ -85,15 +86,11 @@ initPiece pieceShape =
     { shape = pieceShape, orientation = Up, x = 3, y = -2 }
 
 
-initGameState : () -> GameState
-initGameState () =
-    let
-        startingPieceShape =
-            L
-    in
+initGameState : PieceShape -> PieceShape -> GameState
+initGameState startingPieceShape nextPieceShape =
     { board = Dict.empty |> addBoundaries
     , currentPiece = initPiece startingPieceShape
-    , nextShape = T
+    , nextShape = nextPieceShape
     , millisecondsSinceLastTick = 0
     , linesCleared = 0
     }
@@ -157,9 +154,9 @@ isFull board line =
 
 tryFindBottomMostFullLine : BoardMap -> Maybe Int
 tryFindBottomMostFullLine board =
-    List.range (boardHeight - 1) 0
-        |> List.reverse
-        |> List.Extra.findIndex (\line -> line |> isFull board)
+    List.range 0 (boardHeight - 1)
+        |> List.Extra.findIndices (\line -> line |> isFull board)
+        |> List.Extra.last
 
 
 shiftLinesAbove : Int -> ( ( Int, Int ), BoardTile ) -> ( ( Int, Int ), BoardTile )
@@ -282,7 +279,6 @@ type Msg
     | NoOp
     | UpPressed
     | MovePieceDown
-      -- | DownPressed
     | RightPressed
     | LeftPressed
     | SpawnNextPiece PieceShape
@@ -302,11 +298,15 @@ movePieceDown gameState =
             { currentPiece | y = gameState.currentPiece.y + 1 }
     in
     if newPiece |> hasCollisionWith gameState.board then
-        ( Running (gameState |> landPiece |> clearLines), Cmd.none )
-        -- TODO: SpawnRandomPiece Cmd
+        ( Running (gameState |> landPiece |> clearLines), Random.generate SpawnNextPiece randomPieceShape )
 
     else
         ( Running { gameState | currentPiece = newPiece }, Cmd.none )
+
+
+randomPieceShape : Random.Generator PieceShape
+randomPieceShape =
+    Random.uniform T [ S, Z, I, O, L, J ]
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -353,11 +353,11 @@ update msg model =
             ( Running gameState, Cmd.none )
 
         ( _, StartNewGamePressed ) ->
-            ( Running (initGameState ()), Cmd.none )
+            ( model, Random.generate StartNewGame (Random.pair randomPieceShape randomPieceShape) )
 
-        -- TODO: startNewGameCmd
-        -- ( _, StartNewGame (startingPieceShape, nextPieceShape) ) ->
-        --     ( Running (initGameState startingPieceShape nextPieceShape), Cmd.none )
+        ( _, StartNewGame ( startingPieceShape, nextPieceShape ) ) ->
+            ( Running (initGameState startingPieceShape nextPieceShape), Cmd.none )
+
         _ ->
             ( model, Cmd.none )
 
