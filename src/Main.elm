@@ -50,15 +50,20 @@ toMsg string =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
-    let
-        keySubscription =
-            Browser.Events.onKeyDown keyDecoder
+subscriptions model =
+    case model of
+        Running _ ->
+            let
+                keySubscription =
+                    Browser.Events.onKeyDown keyDecoder
 
-        timerSubscription =
-            Browser.Events.onAnimationFrameDelta (\deltaSinceLastTick -> Tick deltaSinceLastTick)
-    in
-    Sub.batch [ keySubscription, timerSubscription ]
+                timerSubscription =
+                    Browser.Events.onAnimationFrameDelta (\deltaSinceLastTick -> Tick deltaSinceLastTick)
+            in
+            Sub.batch [ keySubscription, timerSubscription ]
+
+        _ ->
+            Sub.none
 
 
 
