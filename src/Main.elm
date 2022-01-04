@@ -3,7 +3,7 @@ module Main exposing (main)
 import Array exposing (Array)
 import Browser
 import Browser.Events
-import Dict exposing (insert)
+import Dict
 import Html exposing (Html, button, div, h6, text)
 import Html.Events exposing (onClick)
 import Json.Decode as Decode
