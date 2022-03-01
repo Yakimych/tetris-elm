@@ -1,0 +1,16 @@
+name: Build and Deploy the app
+on: [push]
+jobs:
+  Build-and-Deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: jorelali/setup-elm@v3
+        with:
+          elm-version: 0.19.1
+      - run: elm make src/Main.elm --output=build/index.html
+
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@v4.2.5
+        with:
+          branch: gh-pages
+          folder: build
